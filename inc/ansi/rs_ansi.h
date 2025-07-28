@@ -17,6 +17,7 @@
 #define RS_MAGENTA          "\x1b[95m"
 #define RS_CYAN             "\x1b[96m"
 #define RS_RGB(r,g,b)       "\x1b[38;2;" #r ";" #g ";" #b "m"
+//#define RS_HEX(hex)         RS_RGB(hex & 0xff, hex & 0xff00 >> 8, hex & 0xff0000 >> 16)
 
 #define RS_DEFAULT_BG       "\x1b[49m"
 #define RS_BLACK_BG         "\x1b[40m"

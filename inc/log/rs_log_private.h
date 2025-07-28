@@ -8,6 +8,7 @@
 #include <filesystem>
 #include "rs_log_level.h"
 #include "../ansi/rs_ansi.h"
+#include "../rs_source_location_capture.h"
 
 
 #ifdef _WIN32
@@ -24,10 +25,10 @@
 #pragma push_macro("INFO_COLOR")
 #pragma push_macro("TRACE_COLOR")
 #if RS_LOG_ENABLE_COLOR
-    #define ERROR_COLOR     RS_RGB(239,71,111)
-    #define WARN_COLOR      RS_RGB(255,209,102)
-    #define INFO_COLOR      RS_RGB(17,138,178)
-    #define TRACE_COLOR     RS_RGB(7,59,76)
+    #define ERROR_COLOR     RS_RGB(239, 71, 111)
+    #define WARN_COLOR      RS_RGB(255, 209, 102)
+    #define INFO_COLOR      RS_RGB(17, 138, 178)
+    #define TRACE_COLOR     RS_RGB(100, 100, 100) //RS_GRAY //RS_RGB(7, 59, 76)
 #else
     #define ERROR_COLOR     ""
     #define WARN_COLOR      ""
@@ -38,52 +39,8 @@
 
 namespace rs {
 namespace log {
-    static consteval size_t consteval_strlen (const char *string) {
-        size_t len = 0;
-        while (*string++) {
-            len++;
-        }
-        return len;
-    }
-
-    static consteval const char* consteval_get_shortname (const std::source_location& loc) {
-        const auto l = consteval_strlen(loc.file_name());
-        const char* shortname = loc.file_name() + l;
-
-        while (*shortname != '\\' && *shortname != '/') {
-            shortname--;
-        }
-        shortname++;
-
-        return shortname;
-    }
-
-    // Based on https://stackoverflow.com/a/66402319/19514931
-    struct format_string_auto_location {
-        _NODISCARD_CTOR consteval format_string_auto_location (const char* const format, const std::source_location &loc = std::source_location::current())
-            : m_format (format)
-            , m_loc (loc)
-            , m_file_name_short (consteval_get_shortname(loc))
-        {}
-
-        _NODISCARD constexpr auto format (void) const noexcept {
-            return m_format;
-        }
-        _NODISCARD constexpr auto source_location (void) const noexcept {
-            return m_loc;
-        }
-        _NODISCARD constexpr auto short_file_name (void) const noexcept {
-            return m_file_name_short;
-        }
-
-    private:
-        const char* const           m_format;
-        const std::source_location  m_loc;
-        const char*                 m_file_name_short;
-    };
-
 namespace _private {
-    static const char* STRINGS[] = {
+    static const char* LOG_LEVEL_TITLES[] = {
         ERROR_COLOR "ERROR" RS_DEFAULT,
         WARN_COLOR  "WARN"  RS_DEFAULT,
         INFO_COLOR  "INFO"  RS_DEFAULT,
@@ -91,12 +48,8 @@ namespace _private {
     };
 
     constexpr const char *const get_level_string (level_t level) {
-        return STRINGS[static_cast<std::underlying_type_t<level_t>>(level) - 1];
+        return LOG_LEVEL_TITLES[static_cast<std::underlying_type_t<level_t>>(level) - static_cast<std::underlying_type_t<level_t>>(level_t::MIN)];
     }
-
-
-    template<typename... ArgTypes>
-    void log (level_t level, format_string_auto_location&& fmt_loc, ArgTypes&&... args); // format_string needs to know about this
 
     template<typename... ArgTypes>
     std::unique_ptr<char[]> format_string (const char *const RS_RESTRICT format, ArgTypes&&... args) {
@@ -114,7 +67,7 @@ namespace _private {
             }
             // Format is invalid.
             else {
-                log(level_t::ERROR, "Invalid format string");
+                throw std::invalid_argument("Invalid format string");
             }
         }
         else {
@@ -128,16 +81,16 @@ namespace _private {
     }
 
     template<typename... ArgTypes>
-    void log (level_t level, format_string_auto_location&& fmt_loc, ArgTypes&&... args) {
+    void log (level_t level, source_location_capture_cstring&& loc, ArgTypes&&... args) {
         // Enabled logging if global log level is not NONE.
         if constexpr (RS_GLOBAL_LOG_LEVEL > level_t::NONE && RS_GLOBAL_LOG_LEVEL < level_t::_N_LEVELS) {
             // Don't log anything above the global log level.
             if (level <= RS_GLOBAL_LOG_LEVEL) {
                 // Format and print.
-                if (auto s = format_string(fmt_loc.format(), args...)) {
-                    RS_LOG_FUNC(RS_DEFAULT "[%s] %s -- line %u, %s\n", get_level_string(level), s.get(), fmt_loc.source_location().line(), fmt_loc.short_file_name());
+                if (auto s = format_string(loc.value(), args...)) {
+                    RS_LOG_FUNC(RS_DEFAULT "[%s]\t%s\t" RS_GRAY "%s: %u" RS_DEFAULT "\n", get_level_string(level), s.get(), loc.source_location_short_file_name(), loc.source_location().line());
                 }
-                // Report formatting error
+                // Report formatting error.
                 else {
                     auto buffer = std::unique_ptr<char[]>(new char[512]);
                     if (0 != strerror_s(buffer.get(), 512, errno)) {

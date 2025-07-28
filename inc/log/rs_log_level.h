@@ -7,10 +7,11 @@ namespace rs {
 namespace log {
     enum class level_t : uint8_t {
         NONE = 0,
-        ERROR,
+
+        ERROR,  MIN = ERROR,
         WARN,
         INFO,
-        TRACE,
+        TRACE,  MAX = TRACE,
 
         _N_LEVELS
     };
